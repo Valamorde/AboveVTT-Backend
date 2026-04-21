@@ -1,8 +1,7 @@
-import { QueryCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
-import { ddb } from '../../shared/db';
+import { connectionRepo } from '../../shared/repositories/connection';
+import { sceneRepo } from '../../shared/repositories/scene';
 import { makeApigw } from '../../shared/apigw';
-import { keys } from '../../shared/keys';
 import type { WsEvent, VTTMessage, Handler } from '../../shared/types';
 
 export const switchSceneHandler: Handler = async (event: WsEvent, msg: VTTMessage): Promise<unknown> => {
@@ -13,30 +12,24 @@ export const switchSceneHandler: Handler = async (event: WsEvent, msg: VTTMessag
 
   console.log(`executing switch_scene, searching for ${campaignId} and scene ${sceneId}`);
 
-  const connectionData = await ddb.send(new QueryCommand({
-    TableName: process.env.TABLE_NAME,
-    KeyConditionExpression: 'campaignId = :hkey and begins_with(objectId,:skey)',
-    ExpressionAttributeValues: {
-      ':hkey': campaignId,
-      ':skey': keys.connByType(switchDm),
-    },
-  }));
+  const connections = await connectionRepo.queryByType(campaignId, switchDm);
 
   console.log('Got connectiondata');
   const apigw = makeApigw(event);
   const message = { eventType: 'custom/myVTT/fetchscene', data: { sceneid: sceneId } };
 
-  const promises = (connectionData.Items ?? []).map(item =>
+  const promises: Promise<unknown>[] = connections.map(item =>
     apigw.send(new PostToConnectionCommand({
-      ConnectionId: item['connectionId'] as string,
+      ConnectionId: item.connectionId,
       Data: JSON.stringify(message),
     })).catch(() => { /* stale connection, ignore */ })
   );
 
-  promises.push(ddb.send(new PutCommand({
-    TableName: process.env.TABLE_NAME,
-    Item: { campaignId, objectId: switchDm ? keys.dmScene() : keys.playerScene(), data: sceneId },
-  })));
+  promises.push(
+    switchDm
+      ? sceneRepo.setDmScene(campaignId, sceneId)
+      : sceneRepo.setPlayerScene(campaignId, sceneId)
+  );
 
   return Promise.allSettled(promises);
 };

@@ -1,15 +1,7 @@
-import { QueryCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { PostToConnectionCommand, DeleteConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
-import { ddb } from '../../shared/db';
+import { connectionRepo } from '../../shared/repositories/connection';
 import { makeApigw } from '../../shared/apigw';
-import { keys } from '../../shared/keys';
 import type { WsEvent, VTTMessage } from '../../shared/types';
-
-interface Connection {
-  objectId: string;
-  connectionId: string;
-  timestamp: number;
-}
 
 const MAX_CONNECTIONS = parseInt(process.env.MAX_CONNECTIONS ?? '30', 10);
 
@@ -17,17 +9,12 @@ export async function forwardMessage(event: WsEvent, msg: VTTMessage): Promise<v
   const { campaignId } = msg;
   const senderId = event.requestContext.connectionId;
 
-  const connectionData = await ddb.send(new QueryCommand({
-    TableName: process.env.TABLE_NAME,
-    KeyConditionExpression: 'campaignId = :hkey and begins_with(objectId,:skey)',
-    ExpressionAttributeValues: { ':hkey': campaignId, ':skey': keys.connPrefix() },
-  })).catch((e: unknown) => {
-    console.log('fuck. the query failed');
-    console.log(e);
+  const items = await connectionRepo.queryByCampaign(campaignId).catch((e: unknown) => {
+    console.error('connection query failed', e);
     return undefined;
   });
 
-  if (!connectionData) return;
+  if (!items) return;
 
   const apigw = makeApigw(event);
 
@@ -35,7 +22,6 @@ export async function forwardMessage(event: WsEvent, msg: VTTMessage): Promise<v
   fwdBody.requestTimeEpoch = String(event.requestContext.requestTimeEpoch);
   const eventBodySend = JSON.stringify(fwdBody);
 
-  const items = (connectionData.Items ?? []) as Connection[];
   items.sort((a, b) => b.timestamp - a.timestamp);
 
   const toDelete = items.length > MAX_CONNECTIONS ? items.splice(MAX_CONNECTIONS) : [];
@@ -43,7 +29,7 @@ export async function forwardMessage(event: WsEvent, msg: VTTMessage): Promise<v
   const deleteCalls = toDelete.map(({ objectId, connectionId }) =>
     Promise.allSettled([
       apigw.send(new DeleteConnectionCommand({ ConnectionId: connectionId })),
-      ddb.send(new DeleteCommand({ TableName: process.env.TABLE_NAME, Key: { campaignId, objectId } })),
+      connectionRepo.deleteById(campaignId, objectId),
     ])
   );
 
@@ -57,7 +43,7 @@ export async function forwardMessage(event: WsEvent, msg: VTTMessage): Promise<v
         const err = e as { $metadata?: { httpStatusCode?: number }; name?: string };
         if (err.$metadata?.httpStatusCode === 410 || err.name === 'GoneException') {
           console.log(`Found stale connection, deleting ${connectionId}`);
-          return ddb.send(new DeleteCommand({ TableName: process.env.TABLE_NAME, Key: { campaignId, objectId } }));
+          return connectionRepo.deleteById(campaignId, objectId);
         }
         return;
       });

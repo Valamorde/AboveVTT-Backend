@@ -1,89 +1,62 @@
-import { QueryCommand, PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
-import { ddb } from '../../shared/db';
+import { sceneRepo } from '../../shared/repositories/scene';
 import { makeApigw } from '../../shared/apigw';
-import { keys } from '../../shared/keys';
+import { DEFAULT_SCENE_ID } from '../../shared/constants';
 import type { WsEvent, VTTMessage, Handler } from '../../shared/types';
 
-async function getCurrentSceneId(campaignId: string, getDmScene: boolean, forced: unknown = null): Promise<unknown> {
-  if (forced !== null) return forced;
-  const objectId = getDmScene ? keys.dmScene() : keys.playerScene();
-
-  const data = await ddb.send(new GetCommand({
-    TableName: process.env.TABLE_NAME,
-    Key: { campaignId, objectId },
-  }));
-
-  if (data.Item) {
-    console.log('found the current scene');
-    return data.Item['data'];
-  }
-  console.log("didn't found the current scene");
-  return null;
-}
+const DEFAULT_SCENE = {
+  id: DEFAULT_SCENE_ID,
+  title: 'The Tavern',
+  dm_map: '',
+  player_map: 'https://i.pinimg.com/originals/a2/04/d4/a204d4a2faceb7f4ae93e8bd9d146469.jpg',
+  scale: '100',
+  dm_map_usable: '0',
+  fog_of_war: '1',
+  tokens: {},
+  grid: '0',
+  hpps: '72',
+  vpps: '72',
+  snap: '1',
+  fpsq: '5',
+  offsetx: 29,
+  offsety: 54,
+  reveals: [[0, 0, 0, 0, 2, 0]],
+  order: Date.now(),
+};
 
 export const dmjoinHandler: Handler = async (event: WsEvent, msg: VTTMessage): Promise<unknown> => {
   const { campaignId } = msg;
   const apigw = makeApigw(event);
 
-  const getReply = await ddb.send(new QueryCommand({
-    TableName: process.env.TABLE_NAME,
-    IndexName: 'sceneProperties',
-    KeyConditionExpression: 'campaignId = :hkey',
-    ExpressionAttributeValues: { ':hkey': campaignId },
-  }));
+  const listResult = await sceneRepo.listScenes(campaignId);
+  const existingItems = listResult.Items ?? [];
 
-  let scenelist: unknown[] = [];
+  let scenelist: unknown[];
+  let playerSceneId: unknown;
+  let dmSceneId: unknown;
+
   const promises: Promise<unknown>[] = [];
-  let forceScene: unknown = null;
 
-  if ((getReply.Items ?? []).length > 0) {
+  if (existingItems.length > 0) {
     console.log('DMjoin, found some scenes. I\'ll send them');
-    scenelist = (getReply.Items ?? []).map(el => el['data']);
+    scenelist = existingItems.map(el => el['data']);
+    playerSceneId = await sceneRepo.getPlayerScene(campaignId);
+    dmSceneId = await sceneRepo.getDmScene(campaignId) ?? DEFAULT_SCENE_ID;
   } else {
     console.log('generating empty scene');
-    forceScene = 666;
-    const basicScene = {
-      id: '666',
-      title: 'The Tavern',
-      dm_map: '',
-      player_map: 'https://i.pinimg.com/originals/a2/04/d4/a204d4a2faceb7f4ae93e8bd9d146469.jpg',
-      scale: '100',
-      dm_map_usable: '0',
-      fog_of_war: '1',
-      tokens: {},
-      grid: '0',
-      hpps: '72',
-      vpps: '72',
-      snap: '1',
-      fpsq: '5',
-      offsetx: 29,
-      offsety: 54,
-      reveals: [[0, 0, 0, 0, 2, 0]],
-      order: Date.now(),
-    };
+    const basicScene = { ...DEFAULT_SCENE, order: Date.now() };
     scenelist = [basicScene];
+    playerSceneId = DEFAULT_SCENE_ID;
+    dmSceneId = DEFAULT_SCENE_ID;
 
-    promises.push(ddb.send(new PutCommand({
-      TableName: process.env.TABLE_NAME,
-      Item: { campaignId, objectId: keys.sceneData(basicScene.id), sceneId: basicScene.id, data: basicScene, timestamp: Date.now() },
-    })));
-    promises.push(ddb.send(new PutCommand({
-      TableName: process.env.TABLE_NAME,
-      Item: { campaignId, objectId: keys.fogData(basicScene.id), data: [[0, 0, 0, 0, 2, 0]] },
-    })));
-    promises.push(ddb.send(new PutCommand({
-      TableName: process.env.TABLE_NAME,
-      Item: { campaignId, objectId: keys.dmScene(), data: '666' },
-    })));
-    promises.push(ddb.send(new PutCommand({
-      TableName: process.env.TABLE_NAME,
-      Item: { campaignId, objectId: keys.playerScene(), data: '666' },
-    })));
+    promises.push(sceneRepo.putSceneData(campaignId, basicScene.id, basicScene as Record<string, unknown>));
+    promises.push(sceneRepo.putFogData(campaignId, basicScene.id, [[0, 0, 0, 0, 2, 0]]));
+    promises.push(sceneRepo.setDmScene(campaignId, DEFAULT_SCENE_ID));
+    promises.push(sceneRepo.setPlayerScene(campaignId, DEFAULT_SCENE_ID));
   }
 
   promises.push(
-    getCurrentSceneId(campaignId, false, forceScene).then(sceneid => {
+    Promise.resolve(playerSceneId).then(sceneid => {
       const sceneListMsg = { eventType: 'custom/myVTT/scenelist', data: scenelist, playersSceneId: sceneid };
       return apigw.send(new PostToConnectionCommand({
         ConnectionId: event.requestContext.connectionId,
@@ -94,9 +67,8 @@ export const dmjoinHandler: Handler = async (event: WsEvent, msg: VTTMessage): P
 
   await Promise.allSettled(promises);
 
-  const sceneId = await getCurrentSceneId(campaignId, true, forceScene);
-  console.log(`The Current Scene id is ${String(sceneId)}`);
-  const message = { eventType: 'custom/myVTT/fetchscene', data: { sceneid: sceneId } };
+  console.log(`The Current Scene id is ${String(dmSceneId)}`);
+  const message = { eventType: 'custom/myVTT/fetchscene', data: { sceneid: dmSceneId } };
   return apigw.send(new PostToConnectionCommand({
     ConnectionId: event.requestContext.connectionId,
     Data: JSON.stringify(message),
