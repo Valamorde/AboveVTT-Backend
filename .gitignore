@@ -5,6 +5,12 @@
 *.d.ts
 node_modules
 
+# compiled CDK entrypoint (replaced by ts-node)
+index.js
+
+# local deployment config — never commit real account_id
+config.json
+
 # CDK asset staging directory
 .cdk.staging
 cdk.out
