@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { Architecture, AssetCode, Function, Runtime } from "aws-cdk-lib/aws-lambda";
+import { Architecture, Runtime } from "aws-cdk-lib/aws-lambda";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { CfnApi, CfnDeployment, CfnIntegration, CfnRoute, CfnStage, CorsHttpMethod, HttpApi, HttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import { App, Duration, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
@@ -74,16 +75,15 @@ class ChatAppStack extends Stack {
             },
         });
 
-        const abovevttServicesFunc = new Function(this, "abovevtt-services-lambda", {
-            code: new AssetCode("./abovevttServices"),
+        const abovevttServicesFunc = new NodejsFunction(this, "abovevtt-services-lambda", {
+            entry: "src/services/handler.ts",
+            handler: "handler",
             architecture: Architecture.X86_64,
-            handler: "app.handler",
             runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(30),
             memorySize: 256,
-            environment: {
-                TABLE_NAME: tableName,
-            },
+            environment: { TABLE_NAME: tableName },
+            bundling: { externalModules: ["@aws-sdk/*"] },
         });
         table.grantReadWriteData(abovevttServicesFunc);
 
@@ -95,41 +95,40 @@ class ChatAppStack extends Stack {
             integration: abovevttServicesIntegration,
         });
 
-        const connectFunc = new Function(this, "connect-lambda", {
-            code: new AssetCode("./onconnect"),
-            handler: "app.handler",
+        const connectFunc = new NodejsFunction(this, "connect-lambda", {
+            entry: "src/connect/handler.ts",
+            handler: "handler",
             runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(30),
             memorySize: 256,
-            environment: {
-                TABLE_NAME: tableName,
-            },
+            environment: { TABLE_NAME: tableName },
+            bundling: { externalModules: ["@aws-sdk/*"] },
         });
         table.grantReadWriteData(connectFunc);
 
-        const disconnectFunc = new Function(this, "disconnect-lambda", {
-            code: new AssetCode("./ondisconnect"),
-            handler: "app.handler",
+        const disconnectFunc = new NodejsFunction(this, "disconnect-lambda", {
+            entry: "src/disconnect/handler.ts",
+            handler: "handler",
             runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(30),
             memorySize: 256,
-            environment: {
-                TABLE_NAME: tableName,
-            },
+            environment: { TABLE_NAME: tableName },
+            bundling: { externalModules: ["@aws-sdk/*"] },
         });
         table.grantReadWriteData(disconnectFunc);
 
-        const keepaliveFunc = new Function(this, "keepalive-lambda", {
-            code: new AssetCode("./keepalive"),
-            handler: "app.handler",
+        const keepaliveFunc = new NodejsFunction(this, "keepalive-lambda", {
+            entry: "src/keepalive/handler.ts",
+            handler: "handler",
             runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(2),
             memorySize: 128,
+            bundling: { externalModules: ["@aws-sdk/*"] },
         });
 
-        const messageFunc = new Function(this, "message-lambda", {
-            code: new AssetCode("./sendmessage"),
-            handler: "app.handler",
+        const messageFunc = new NodejsFunction(this, "message-lambda", {
+            entry: "src/sendmessage/handler.ts",
+            handler: "handler",
             runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(30),
             memorySize: 256,
@@ -142,9 +141,8 @@ class ChatAppStack extends Stack {
                     effect: Effect.ALLOW,
                 }),
             ],
-            environment: {
-                TABLE_NAME: tableName,
-            },
+            environment: { TABLE_NAME: tableName },
+            bundling: { externalModules: ["@aws-sdk/*"] },
         });
         table.grantReadWriteData(messageFunc);
 
