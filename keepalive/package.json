@@ -1,8 +1,0 @@
-{
-  "name": "keepalive",
-  "version": "1.0.0",
-  "description": "AboveVTT Keepalive",
-  "main": "app.js",
-  "author": "Daniele Martini",
-  "license": "AGPLv3"
-}

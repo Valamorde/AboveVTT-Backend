@@ -11,7 +11,7 @@ interface Connection {
   timestamp: number;
 }
 
-const MAX_CONNECTIONS = 30;
+const MAX_CONNECTIONS = parseInt(process.env.MAX_CONNECTIONS ?? '30', 10);
 
 export async function forwardMessage(event: WsEvent, msg: VTTMessage): Promise<void> {
   const { campaignId } = msg;
@@ -48,13 +48,8 @@ export async function forwardMessage(event: WsEvent, msg: VTTMessage): Promise<v
   );
 
   let counter = 0;
-  const postCalls = items.map(({ objectId, connectionId, timestamp }) => {
+  const postCalls = items.map(({ objectId, connectionId }) => {
     if (connectionId === senderId) return;
-
-    if (timestamp < Date.now() - 1000 * 60 * 120) {
-      console.log(`Found expired connection, deleting ${connectionId}`);
-      return ddb.send(new DeleteCommand({ TableName: process.env.TABLE_NAME, Key: { campaignId, objectId } }));
-    }
 
     counter++;
     return apigw.send(new PostToConnectionCommand({ ConnectionId: connectionId, Data: eventBodySend }))

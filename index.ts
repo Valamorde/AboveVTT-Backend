@@ -34,6 +34,7 @@ class ChatAppStack extends Stack {
             },
             billingMode: BillingMode.PAY_PER_REQUEST,
             removalPolicy: RemovalPolicy.RETAIN,
+            timeToLiveAttribute: "ttl",
         });
 
         // Preserve the CloudFormation logical ID so CDK v1→v2 migration does not
@@ -141,7 +142,7 @@ class ChatAppStack extends Stack {
                     effect: Effect.ALLOW,
                 }),
             ],
-            environment: { TABLE_NAME: tableName },
+            environment: { TABLE_NAME: tableName, MAX_CONNECTIONS: "30" },
             bundling: { externalModules: ["@aws-sdk/*"] },
         });
         table.grantReadWriteData(messageFunc);
