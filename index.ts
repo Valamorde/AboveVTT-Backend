@@ -78,7 +78,7 @@ class ChatAppStack extends Stack {
             code: new AssetCode("./abovevttServices"),
             architecture: Architecture.X86_64,
             handler: "app.handler",
-            runtime: Runtime.NODEJS_12_X,
+            runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(30),
             memorySize: 256,
             environment: {
@@ -98,7 +98,7 @@ class ChatAppStack extends Stack {
         const connectFunc = new Function(this, "connect-lambda", {
             code: new AssetCode("./onconnect"),
             handler: "app.handler",
-            runtime: Runtime.NODEJS_12_X,
+            runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(30),
             memorySize: 256,
             environment: {
@@ -110,7 +110,7 @@ class ChatAppStack extends Stack {
         const disconnectFunc = new Function(this, "disconnect-lambda", {
             code: new AssetCode("./ondisconnect"),
             handler: "app.handler",
-            runtime: Runtime.NODEJS_12_X,
+            runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(30),
             memorySize: 256,
             environment: {
@@ -122,7 +122,7 @@ class ChatAppStack extends Stack {
         const keepaliveFunc = new Function(this, "keepalive-lambda", {
             code: new AssetCode("./keepalive"),
             handler: "app.handler",
-            runtime: Runtime.NODEJS_12_X,
+            runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(2),
             memorySize: 128,
         });
@@ -130,7 +130,7 @@ class ChatAppStack extends Stack {
         const messageFunc = new Function(this, "message-lambda", {
             code: new AssetCode("./sendmessage"),
             handler: "app.handler",
-            runtime: Runtime.NODEJS_12_X,
+            runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(30),
             memorySize: 256,
             initialPolicy: [
