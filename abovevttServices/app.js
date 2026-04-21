@@ -1,330 +1,184 @@
-// Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, BatchWriteCommand } = require('@aws-sdk/lib-dynamodb');
 
-const AWS = require('aws-sdk');
-const { request } = require('http');
-
-const ddb = new AWS.DynamoDB.DocumentClient({ apiVersion: '2012-08-10', region: process.env.AWS_REGION });
-
-
-async function getAllData(params){
-  const _getAllData = async (params, startKey) => {
-    if (startKey) {
-      params.ExclusiveStartKey = startKey
-    }
-    return this.documentClient.query(params).promise()
-  }
-  let lastEvaluatedKey = null
-  let rows = []
-  do {
-    const result = await _getAllData(params, lastEvaluatedKey)
-    rows = rows.concat(result.Items)
-    lastEvaluatedKey = result.LastEvaluatedKey
-  } while (lastEvaluatedKey)
-  return rows
-}
-
-
-
-
-
-
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }));
 
 exports.handler = async event => {
-  
-  const action=event.queryStringParameters?event.queryStringParameters.action:"";
+  const action = event.queryStringParameters ? event.queryStringParameters.action : "";
 
-  if(action=="getCampaignData"){
-    const campaignId=event.queryStringParameters?event.queryStringParameters.campaign:"";
-    return ddb.get({
+  if (action == "getCampaignData") {
+    const campaignId = event.queryStringParameters ? event.queryStringParameters.campaign : "";
+    return ddb.send(new GetCommand({
       TableName: process.env.TABLE_NAME,
-      Key: {
-        campaignId: campaignId,
-        objectId: 'campaigndata'
-      }
-    }).promise().catch(function(){
+      Key: { campaignId, objectId: 'campaigndata' },
+    })).catch(function () {
       return {};
     });
   }
 
-  if(action=="setCampaignData"){
-    const campaignId=event.queryStringParameters?event.queryStringParameters.campaign:"";
+  if (action == "setCampaignData") {
+    const campaignId = event.queryStringParameters ? event.queryStringParameters.campaign : "";
     console.log("logging full event diocane");
     console.log(event);
-    const campaignData=JSON.parse(event.body);
+    const campaignData = JSON.parse(event.body);
 
-    return ddb.put({
+    return ddb.send(new PutCommand({
       TableName: process.env.TABLE_NAME,
       Item: {
-        campaignId: campaignId,
+        campaignId,
         objectId: "campaigndata",
         data: campaignData,
         timestamp: Date.now(),
-      }
-    }).promise();
+      },
+    }));
   }
-  if(action=="migrate"){
+
+  if (action == "migrate") {
     console.log("GOT A MIGRATION REQUEST!");
-    const campaignId=event.queryStringParameters?event.queryStringParameters.campaign:"";
-    const scenes=JSON.parse(event.body);
+    const campaignId = event.queryStringParameters ? event.queryStringParameters.campaign : "";
+    const scenes = JSON.parse(event.body);
     console.log(scenes);
-    let requests=[];
+    let requests = [];
 
-    let nextorder=1000000;
-    let nextid=100;
+    let nextorder = 1000000;
+    let nextid = 100;
     scenes.forEach(scene => {
-      let fogData=scene.reveals;
-      let drawData=scene.drawings;
-      let tokens=scene.tokens;
-      scene.reveals=[];
-      scene.drawings=[];
-      scene.tokens={};
+      const fogData = scene.reveals;
+      const drawData = scene.drawings;
+      const tokens = scene.tokens;
+      scene.reveals = [];
+      scene.drawings = [];
+      scene.tokens = {};
 
-      if(!scene.order){
-        scene.order=nextorder;
-        nextorder=nextorder+1000000;
+      if (!scene.order) {
+        scene.order = nextorder;
+        nextorder = nextorder + 1000000;
       }
 
-      if(!scene.id){
-        scene.id="migrated"+nextid;
-        nextid=nextid+100;
+      if (!scene.id) {
+        scene.id = "migrated" + nextid;
+        nextid = nextid + 100;
       }
 
-      requests.push({
-        PutRequest: {
-          Item: {
-            campaignId: campaignId,
-            objectId: "scenes#"+scene.id+"#scenedata",
-            sceneId: scene.id,
-            data:scene,
-            timestamp: Date.now(),
-          }
-        }
-      });
+      requests.push({ PutRequest: { Item: { campaignId, objectId: "scenes#" + scene.id + "#scenedata", sceneId: scene.id, data: scene, timestamp: Date.now() } } });
+      requests.push({ PutRequest: { Item: { campaignId, objectId: "scenes#" + scene.id + "#fogdata", data: fogData, timestamp: Date.now() } } });
+      requests.push({ PutRequest: { Item: { campaignId, objectId: "scenes#" + scene.id + "#drawdata", data: drawData, timestamp: Date.now() } } });
 
-      requests.push({
-        PutRequest: {
-          Item: {
-            campaignId: campaignId,
-            objectId: "scenes#"+scene.id+"#fogdata",
-            data:fogData,
-            timestamp: Date.now(),
-          }
-        }
-      });
-
-      requests.push({
-        PutRequest: {
-          Item: {
-            campaignId: campaignId,
-            objectId: "scenes#"+scene.id+"#drawdata",
-            data:drawData,
-            timestamp: Date.now(),
-          }
-        }
-      });
-
-      for( tokenid in tokens){
-        requests.push({
-          PutRequest: {
-            Item: {
-              campaignId: campaignId,
-              objectId: "scenes#"+scene.id+"#tokens#"+tokenid,
-              data:tokens[tokenid],
-              timestamp: Date.now(),
-            }
-          }
-        });
+      for (const tokenid in tokens) {
+        requests.push({ PutRequest: { Item: { campaignId, objectId: "scenes#" + scene.id + "#tokens#" + tokenid, data: tokens[tokenid], timestamp: Date.now() } } });
       }
     });
 
-    // and finally enable the cloud !
-    requests.push({
-      PutRequest: {
-        Item: {
-          campaignId: campaignId,
-          objectId: "campaigndata",
-          data:{
-            cloud:1
-          },
-          timestamp: Date.now(),
-        }
-      }
-    });
+    requests.push({ PutRequest: { Item: { campaignId, objectId: "campaigndata", data: { cloud: 1 }, timestamp: Date.now() } } });
 
     console.log("preparing the batch writes");
-    // NOW SEND THE REQUESTS with a super batch write
-    let promises=[];
-    for(let i=0;i<requests.length;i+=20){
-
-      let currentBatch=requests.slice(i,i+21);
-      console.log("adding batch with index "+i);
-      console.log(currentBatch);
-      let batchParams={
-        RequestItems: { 
-          abovevtt: currentBatch
-        }
-      }
-      promises.push(ddb.batchWrite(batchParams).promise());
+    const promises = [];
+    for (let i = 0; i < requests.length; i += 25) {
+      const currentBatch = requests.slice(i, i + 25);
+      console.log("adding batch with index " + i);
+      promises.push(ddb.send(new BatchWriteCommand({
+        RequestItems: { [process.env.TABLE_NAME]: currentBatch },
+      })));
     }
-    console.log(promises);
-    await Promise.allSettled(promises).then(
-      (results)=>{console.log(results);}
-    );
+    await Promise.allSettled(promises).then((results) => { console.log(results); });
 
-    return { statusCode: 200, body: 'Migrated' };   
-  } // END OF MIGRATE
+    return { statusCode: 200, body: 'Migrated' };
+  }
 
-  if(action=="export_scenes"){
-    const campaignId=event.queryStringParameters?event.queryStringParameters.campaign:"";
-    const queryParams ={
+  if (action == "export_scenes") {
+    const campaignId = event.queryStringParameters ? event.queryStringParameters.campaign : "";
+
+    const queryReply = await ddb.send(new QueryCommand({
       TableName: process.env.TABLE_NAME,
       IndexName: 'sceneProperties',
       KeyConditionExpression: "campaignId = :hkey",
-      ExpressionAttributeValues: {
-        ':hkey': campaignId,
-      },
-    };
+      ExpressionAttributeValues: { ':hkey': campaignId },
+    }));
 
-    return ddb.query(queryParams).promise().then((queryReply)=>{
-      let export_data=[];
-      let scenelist=queryReply.Items.map( (element)=> element.data);
+    const export_data = [];
+    const scenelist = queryReply.Items.map(element => element.data);
 
-      let promises=[];
-      scenelist.forEach(
-        (scene)=>{
-          
-          let sceneId=scene.id;
-          scene.tokens={};
-          scene.reveals=[];
-          scene.drawings=[];
-          let readScenePromise=ddb.query({
-            TableName: process.env.TABLE_NAME,
-            KeyConditionExpression: "campaignId = :hkey and begins_with(objectId,:skey)",
-            ExpressionAttributeValues: {
-              ':hkey': campaignId,
-              ':skey': "scenes#"+sceneId
-            },
-          }).promise().then(
-          (sceneObjects)=>{ // this contains all tokens, reveals etc etc. we pack it in the scene
-            // add tokens to scene
-            console.log("got those sceneObjects");
-            console.log(sceneObjects);
-            console.log("for this scene");
-            console.log(scene);
-            sceneObjects.Items.filter( (element)=> element.objectId.startsWith("scenes#"+sceneId+"#tokens#")).forEach((element)=>scene.tokens[element.data.id]=element.data);
+    const promises = scenelist.map(scene => {
+      const sceneId = scene.id;
+      scene.tokens = {};
+      scene.reveals = [];
+      scene.drawings = [];
 
-            // add fog
-            let fogdata=sceneObjects.Items.find((element) => element.objectId=="scenes#"+sceneId+"#fogdata");
-            if(fogdata && fogdata.data)
-              scene.reveals=fogdata.data;
-            console.log("got this fog");
-            console.log(fogdata);
-            let drawdata=sceneObjects.Items.find((element) => element.objectId=="scenes#"+sceneId+"#drawdata");
+      return ddb.send(new QueryCommand({
+        TableName: process.env.TABLE_NAME,
+        KeyConditionExpression: "campaignId = :hkey and begins_with(objectId,:skey)",
+        ExpressionAttributeValues: { ':hkey': campaignId, ':skey': "scenes#" + sceneId },
+      })).then(sceneObjects => {
+        sceneObjects.Items
+          .filter(el => el.objectId.startsWith("scenes#" + sceneId + "#tokens#"))
+          .forEach(el => scene.tokens[el.data.id] = el.data);
 
-            if(drawdata && drawdata.data)
-              scene.drawings=drawdata.data;
-            
-            export_data.push(scene);
-          });
-          promises.push(readScenePromise);
-        }
-      );
+        const fogdata = sceneObjects.Items.find(el => el.objectId == "scenes#" + sceneId + "#fogdata");
+        if (fogdata && fogdata.data) scene.reveals = fogdata.data;
 
-      return Promise.allSettled(promises).then(
-        ()=>{
-          return { statusCode: 200, body: JSON.stringify(export_data) };
-        }
-      );
+        const drawdata = sceneObjects.Items.find(el => el.objectId == "scenes#" + sceneId + "#drawdata");
+        if (drawdata && drawdata.data) scene.drawings = drawdata.data;
 
+        export_data.push(scene);
+      });
     });
-    
+
+    await Promise.allSettled(promises);
+    return { statusCode: 200, body: JSON.stringify(export_data) };
   }
 
-  if(action=="getScene"){
-    const campaignId=event.queryStringParameters?event.queryStringParameters.campaign:"";
-    const sceneId=event.queryStringParameters?event.queryStringParameters.scene:"";
+  if (action == "getScene") {
+    const campaignId = event.queryStringParameters ? event.queryStringParameters.campaign : "";
+    const sceneId = event.queryStringParameters ? event.queryStringParameters.scene : "";
 
-    return ddb.query({
-      TableName: "abovevtt",
+    const data = await ddb.send(new QueryCommand({
+      TableName: process.env.TABLE_NAME,
       KeyConditionExpression: "campaignId = :hkey and begins_with(objectId,:skey)",
-      ExpressionAttributeValues: {
-        ':hkey': campaignId,
-        ':skey': "scenes#"+sceneId
-      },
-    }).promise().then(
-      (data)=>{console.log("got SceneData");
-      console.log(data);
-      let sceneData=data.Items.find( (element)=> element.objectId=="scenes#"+sceneId+"#scenedata");
-      sceneData.data.tokens=[];
-      data.Items.filter( (element)=> element.objectId.startsWith("scenes#"+sceneId+"#tokens#")).forEach((element)=>sceneData.data.tokens.push(element.data));
-  
-  
-      sceneData.data.reveals=[]
-      let fogdata=data.Items.find((element) => element.objectId=="scenes#"+sceneId+"#fogdata");
-      if(fogdata && fogdata.data)
-        sceneData.data.reveals=fogdata.data;
-      sceneData.data.drawings=[]
-      let drawdata=data.Items.find((element) => element.objectId=="scenes#"+sceneId+"#drawdata");
-      if(drawdata && drawdata.data)
-      sceneData.data.drawings=drawdata.data;
-  
-  
-      console.log("returning SceneData");
-      return sceneData;}
-    );
+      ExpressionAttributeValues: { ':hkey': campaignId, ':skey': "scenes#" + sceneId },
+    }));
+
+    console.log("got SceneData");
+    const sceneData = data.Items.find(el => el.objectId == "scenes#" + sceneId + "#scenedata");
+    sceneData.data.tokens = [];
+    data.Items
+      .filter(el => el.objectId.startsWith("scenes#" + sceneId + "#tokens#"))
+      .forEach(el => sceneData.data.tokens.push(el.data));
+
+    sceneData.data.reveals = [];
+    const fogdata = data.Items.find(el => el.objectId == "scenes#" + sceneId + "#fogdata");
+    if (fogdata && fogdata.data) sceneData.data.reveals = fogdata.data;
+
+    sceneData.data.drawings = [];
+    const drawdata = data.Items.find(el => el.objectId == "scenes#" + sceneId + "#drawdata");
+    if (drawdata && drawdata.data) sceneData.data.drawings = drawdata.data;
+
+    console.log("returning SceneData");
+    return sceneData;
   }
 
-  
-  if(action=="getSceneList"){
-    const campaignId=event.queryStringParameters?event.queryStringParameters.campaign:"";
-    const queryParams ={
-      TableName: "abovevtt",
+  if (action == "getSceneList") {
+    const campaignId = event.queryStringParameters ? event.queryStringParameters.campaign : "";
+    return ddb.send(new QueryCommand({
+      TableName: process.env.TABLE_NAME,
       IndexName: 'sceneProperties',
       KeyConditionExpression: "campaignId = :hkey",
-      ExpressionAttributeValues: {
-        ':hkey': campaignId,
-      },
-    };
-
-    return ddb.query(queryParams).promise().then(
-      (scenelist)=>{
-        return scenelist;
-      }
-    );
+      ExpressionAttributeValues: { ':hkey': campaignId },
+    }));
   }
 
-  if(action=="getCurrentScene"){
-    const campaignId=event.queryStringParameters?event.queryStringParameters.campaign:"";
-    let getDmScene=ddb.get(
-      {
-        TableName: "abovevtt",
-        Key: {
-          campaignId: campaignId,
-          objectId: "dmscene",
-        }
-      }
-    ).promise();
+  if (action == "getCurrentScene") {
+    const campaignId = event.queryStringParameters ? event.queryStringParameters.campaign : "";
 
-    let getPlayerScene=ddb.get(
-        {
-          TableName: "abovevtt",
-          Key: {
-            campaignId: campaignId,
-            objectId: "playerscene"
-          }
-        }).promise();
-
-    let dmSceneResult=await getDmScene;
-    let playerSceneResult= await getPlayerScene;
-
-    let dmSceneId=dmSceneResult.Item? dmSceneResult.Item.data:"";
-    let playerSceneId=playerSceneResult.Item? playerSceneResult.Item.data:"";
+    const [dmSceneResult, playerSceneResult] = await Promise.all([
+      ddb.send(new GetCommand({ TableName: process.env.TABLE_NAME, Key: { campaignId, objectId: "dmscene" } })),
+      ddb.send(new GetCommand({ TableName: process.env.TABLE_NAME, Key: { campaignId, objectId: "playerscene" } })),
+    ]);
 
     return {
-      dmscene: dmSceneId,
-      playerscene:playerSceneId,
+      dmscene: dmSceneResult.Item ? dmSceneResult.Item.data : "",
+      playerscene: playerSceneResult.Item ? playerSceneResult.Item.data : "",
     };
   }
+
   return { statusCode: 200, body: 'unknown action' };
 };

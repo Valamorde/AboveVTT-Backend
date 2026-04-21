@@ -2,10 +2,11 @@
   "name": "on-connect",
   "version": "1.0.0",
   "description": "AboveVTT on Player Connected",
-  "main": "src/app.js",
+  "main": "app.js",
   "author": "Daniele Martini",
   "license": "AGPLv3",
   "dependencies": {
-    "aws-sdk": "^2.690.0"
+    "@aws-sdk/client-dynamodb": "^3",
+    "@aws-sdk/lib-dynamodb": "^3"
   }
 }
