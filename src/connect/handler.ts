@@ -18,6 +18,7 @@ export const handler = async (event: WsEvent): Promise<LambdaResult> => {
         objectId,
         connectionId: event.requestContext.connectionId,
         timestamp: Date.now(),
+        ttl: Math.floor(Date.now() / 1000) + 7200,
       },
     }));
   } catch (err) {
