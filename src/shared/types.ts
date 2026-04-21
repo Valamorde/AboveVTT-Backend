@@ -16,3 +16,9 @@ export interface VTTMessage {
 }
 
 export type Handler = (event: WsEvent, msg: VTTMessage) => Promise<unknown>;
+
+export interface ServiceContext {
+  campaignId: string;
+  sceneId: string;
+  body: Record<string, unknown>;
+}

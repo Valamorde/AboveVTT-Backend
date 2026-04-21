@@ -77,7 +77,7 @@ class ChatAppStack extends Stack {
         });
 
         const abovevttServicesFunc = new NodejsFunction(this, "abovevtt-services-lambda", {
-            entry: "src/services/handler.ts",
+            entry: "src/lambda/services.ts",
             handler: "handler",
             architecture: Architecture.X86_64,
             runtime: Runtime.NODEJS_22_X,
@@ -97,7 +97,7 @@ class ChatAppStack extends Stack {
         });
 
         const connectFunc = new NodejsFunction(this, "connect-lambda", {
-            entry: "src/connect/handler.ts",
+            entry: "src/lambda/connect.ts",
             handler: "handler",
             runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(30),
@@ -108,7 +108,7 @@ class ChatAppStack extends Stack {
         table.grantReadWriteData(connectFunc);
 
         const disconnectFunc = new NodejsFunction(this, "disconnect-lambda", {
-            entry: "src/disconnect/handler.ts",
+            entry: "src/lambda/disconnect.ts",
             handler: "handler",
             runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(30),
@@ -119,7 +119,7 @@ class ChatAppStack extends Stack {
         table.grantReadWriteData(disconnectFunc);
 
         const keepaliveFunc = new NodejsFunction(this, "keepalive-lambda", {
-            entry: "src/keepalive/handler.ts",
+            entry: "src/lambda/keepalive.ts",
             handler: "handler",
             runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(2),
@@ -128,7 +128,7 @@ class ChatAppStack extends Stack {
         });
 
         const messageFunc = new NodejsFunction(this, "message-lambda", {
-            entry: "src/sendmessage/handler.ts",
+            entry: "src/lambda/sendmessage.ts",
             handler: "handler",
             runtime: Runtime.NODEJS_22_X,
             timeout: Duration.seconds(30),
