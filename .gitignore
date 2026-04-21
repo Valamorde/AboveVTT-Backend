@@ -15,6 +15,9 @@ config.json
 .cdk.staging
 cdk.out
 
+# tsc output
+dist/
+
 # Parcel default cache directory
 .parcel-cache
 

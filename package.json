@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "test": "vitest run"
   },
   "author": {
     "name": "Amazon Web Services",
@@ -15,11 +16,22 @@
   },
   "license": "Apache-2.0",
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.0",
     "@types/node": "^20.0.0",
+    "aws-sdk-client-mock": "^4.0.0",
+    "aws-sdk-client-mock-vitest": "^4.0.0",
+    "esbuild": "^0.24.0",
     "ts-node": "^10.9.0",
-    "typescript": "~5.6.0"
+    "typescript": "~5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   },
   "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3",
+    "@aws-sdk/client-dynamodb": "^3",
+    "@aws-sdk/lib-dynamodb": "^3",
     "aws-cdk-lib": "^2.200.0",
     "constructs": "^10.0.0"
   }

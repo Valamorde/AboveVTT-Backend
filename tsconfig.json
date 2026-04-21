@@ -17,7 +17,8 @@
     "experimentalDecorators": true,
     "strictPropertyInitialization": false,
     "resolveJsonModule": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "skipLibCheck": true
   },
-  "exclude": ["cdk.out", "node_modules"]
+  "exclude": ["cdk.out", "node_modules", "dist", "**/*.test.ts", "vitest.config.ts"]
 }
